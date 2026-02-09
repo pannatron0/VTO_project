@@ -1,23 +1,15 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Clock, History } from "lucide-react";
-import SearchInput from "@/components/SearchInput"; // เพิ่มบรรทัดนี้
-import { useState } from "react"; // เพิ่มบรรทัดนี้
 
 export const VlugsHeader = () => {
   const location = useLocation();
-  const [searchQuery, setSearchQuery] = useState(""); // เพิ่มบรรทัดนี้
 
   const navItems = [
     { path: "/", label: "Try-On", icon: Clock },
     { path: "/history", label: "History", icon: History },
   ];
 
-  // เพิ่มฟังก์ชันนี้
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    console.log("Searching for:", e.target.value);
-  };
 
   return (
     <motion.header
@@ -38,15 +30,6 @@ export const VlugsHeader = () => {
               VLUGS
             </motion.h1>
           </Link>
-
-          {/* Search Input - ตรงกลาง */}
-          <div className="hidden md:block">
-            <SearchInput 
-              value={searchQuery}
-              onChange={handleSearchChange}
-              placeholder="Search..."
-            />
-          </div>
 
           {/* Navigation */}
           <nav className="flex items-center gap-1">

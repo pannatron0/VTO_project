@@ -11,6 +11,16 @@ import { useToast } from "@/hooks/use-toast";
 import { callGenerateAPI } from "@/lib/api";
 import heroWatch from "@/assets/hero-watch.webp";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import SearchInput from "@/components/SearchInput"; // เพิ่มบรรทัดนี้
 
 const Index = () => {
@@ -23,6 +33,11 @@ const Index = () => {
   const [showModal, setShowModal] = useState(false);
   const { addToHistory } = useHistory();
   const [searchQuery, setSearchQuery] = useState(""); // เพิ่มบรรทัดนี้
+  const [searchResults, setSearchResults] = useState<Array<{ title: string; link: string; imageUrl: string }>>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [pendingImage, setPendingImage] = useState<{ title: string; link: string; imageUrl: string } | null>(null);
+  const [isPickOpen, setIsPickOpen] = useState(false);
   
 
   const canGenerate = !!baseImage;
@@ -32,6 +47,84 @@ const Index = () => {
     setSearchQuery(e.target.value);
     console.log("Searching for:", e.target.value);
     // ใส่ logic การค้นหาของคุณที่นี่
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) return;
+    if (trimmedQuery.length < 3) {
+      setSearchError("Please enter at least 3 characters to search.");
+      setSearchResults([]);
+      return;
+    }
+
+    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
+    const searchEngineId = import.meta.env.VITE_GOOGLE_CSE_ID as string | undefined;
+
+    if (!apiKey || !searchEngineId) {
+      setSearchError("Missing Google API credentials. Add VITE_GOOGLE_API_KEY and VITE_GOOGLE_CSE_ID.");
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+
+    const params = new URLSearchParams({
+      key: apiKey,
+      cx: searchEngineId,
+      q: trimmedQuery,
+      searchType: "image",
+      num: "8",
+      safe: "active",
+    });
+
+    fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || "Search failed");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        const items = Array.isArray(data.items) ? data.items : [];
+        const mapped = items
+          .map((item: { title?: string; link?: string; image?: { thumbnailLink?: string } }) => ({
+            title: item.title || "Untitled",
+            link: item.link || "",
+            imageUrl: item.image?.thumbnailLink || item.link || "",
+          }))
+          .filter((item) => item.imageUrl && item.link);
+        setSearchResults(mapped);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Search failed";
+        setSearchError(message);
+        setSearchResults([]);
+      })
+      .finally(() => {
+        setIsSearching(false);
+      });
+  };
+
+  const handleSearchResultClick = (result: { title: string; link: string; imageUrl: string }) => {
+    setPendingImage(result);
+    setIsPickOpen(true);
+  };
+
+  const handlePickTarget = (target: "base" | "style") => {
+    if (!pendingImage) return;
+
+    if (target === "base") {
+      setBaseImage(pendingImage.link);
+    } else {
+      setStyleImage(pendingImage.link);
+    }
+
+    setIsPickOpen(false);
   };
 
   const handleGenerate = async () => {
@@ -170,6 +263,75 @@ const Index = () => {
             <p className="text-muted-foreground max-w-xl mx-auto">
               Upload your base watch and the style you want to apply. Our AI will generate your perfect try-on.
             </p>
+
+            <form className="mt-6 flex justify-center" onSubmit={handleSearchSubmit}>
+              <SearchInput
+                value={searchQuery}
+                onChange={handleSearchChange}
+                placeholder="Search..."
+                className="w-full max-w-md"
+              />
+            </form>
+
+            {searchError && (
+              <p className="mt-4 text-sm text-red-500">{searchError}</p>
+            )}
+
+            {isSearching && (
+              <p className="mt-4 text-sm text-muted-foreground">Searching images...</p>
+            )}
+
+            {searchResults.length > 0 && (
+              <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {searchResults.map((result) => (
+                  <button
+                    key={result.link}
+                    type="button"
+                    onClick={() => handleSearchResultClick(result)}
+                    className="block overflow-hidden rounded-xl bg-white shadow-sm hover:shadow-md transition text-left"
+                  >
+                    <img
+                      src={result.imageUrl}
+                      alt={result.title}
+                      className="h-32 w-full object-cover"
+                      loading="lazy"
+                    />
+                    <div className="px-3 py-2 text-xs text-muted-foreground line-clamp-2">
+                      {result.title}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <AlertDialog open={isPickOpen} onOpenChange={setIsPickOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Use this image as</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Choose where to place the selected image in your configuration.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                {pendingImage && (
+                  <div className="overflow-hidden rounded-lg border">
+                    <img
+                      src={pendingImage.imageUrl}
+                      alt={pendingImage.title}
+                      className="h-40 w-full object-cover"
+                    />
+                  </div>
+                )}
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => handlePickTarget("base")}>
+                    Base Object
+                  </AlertDialogAction>
+                  <AlertDialogAction onClick={() => handlePickTarget("style")}>
+                    Style Element
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
           </motion.div>
 
